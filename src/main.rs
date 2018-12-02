@@ -107,16 +107,15 @@ fn apache_log2json(s: &str) -> Result<serde_json::Value, LogError> {
 
     let time =
         DateTime::parse_from_str(&xs[4], "%d/%b/%Y:%H:%M:%S %:z")
-            .or(DateTime::parse_from_str(&xs[4], "%d/%b/%Y:%H:%M:%S %z"))?;
-    xs[6].parse::<u32>()?;
+            .or_else(|_| DateTime::parse_from_str(&xs[4], "%d/%b/%Y:%H:%M:%S %z"))?;
 
     let log =  AccessLog {
-        host: xs[1].to_owned(),
-        ident: xs[2].to_owned(),
-        authuser: xs[3].to_owned(),
+        host: &xs[1],
+        ident: &xs[2],
+        authuser: &xs[3],
         timestamp: time.to_rfc3339(),
         timestamp_utc: time.with_timezone(&Utc).to_rfc3339(),
-        request: xs[5].to_owned(),
+        request: &xs[5],
         response: xs[6].parse::<u32>()?,
         bytes: xs[7].parse::<u32>()?,
     };
@@ -125,9 +124,7 @@ fn apache_log2json(s: &str) -> Result<serde_json::Value, LogError> {
 
 fn transform_data(data: Vec<u8>) -> std::result::Result<Vec<u8>, LogError> {
     let s = String::from_utf8(data)?;
-
-    let r = apache_log2json(s.as_str())?;
-
+    let r = apache_log2json(&s)?;
     serde_json::to_vec(&r).map_err(|e| LogError::JsonError(e))
 }
 
@@ -145,41 +142,40 @@ fn transform_record(record: &FirehoseRecord) -> TransformationRecord {
             transform_data(x)
                 .map(|x|
                     TransformationRecord {
-                        record_id: record.record_id.clone(),
-                        data: BASE64.encode(x.as_ref()),
+                        record_id: record.record_id.to_string(),
+                        data: BASE64.encode(&x),
                         result: OK,
                     }
                 )
         )
-        .unwrap_or(
+        .unwrap_or_else(|_|
             TransformationRecord {
-                record_id: record.record_id.clone(),
+                record_id: record.record_id.to_string(),
                 data: record.data.clone(),
                 result: NG,
             }
         )
 }
 
-fn my_handler(event: FirehoseEvent, _: Context) -> Result<TransformationEvent, HandlerError> {
-    let h = TransformationEvent{
-        records: event.record_slice().par_iter()
-            .map(|x| transform_record(x))
-            .collect::<Vec<TransformationRecord>>(),
-    };
+fn my_handler<'a>(event: FirehoseEvent, _: Context) -> Result<TransformationEvent, HandlerError> {
+    let records = event.records
+        .par_iter()
+        .map(|x| transform_record(x))
+        .collect();
 
-    Ok(h)
+    Ok(TransformationEvent { records })
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct AccessLog {
-    host: String,
-    ident: String,
-    authuser: String,
+struct AccessLog<'a> {
+    host: &'a str,
+    ident: &'a str,
+    authuser: &'a str,
     #[serde(rename = "@timestamp")]
     timestamp: String,
     #[serde(rename = "@timestamp_utc")]
     timestamp_utc: String,
-    request: String,
+    request: &'a str,
     response: u32,
     bytes: u32,
 }
@@ -192,13 +188,7 @@ struct FirehoseEvent {
     invocation_id: String,
 }
 
-impl FirehoseEvent {
-    fn record_slice(&self) -> &[FirehoseRecord] {
-        self.records.as_slice()
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct FirehoseRecord {
     #[serde(rename = "recordId")]
     record_id: String,

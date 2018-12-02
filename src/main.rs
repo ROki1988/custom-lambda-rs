@@ -151,7 +151,7 @@ fn transform_record(record: &FirehoseRecord) -> TransformationRecord {
         .unwrap_or_else(|_|
             TransformationRecord {
                 record_id: record.record_id.to_string(),
-                data: record.data.clone(),
+                data: record.data.to_string(),
                 result: NG,
             }
         )
@@ -188,7 +188,7 @@ struct FirehoseEvent {
     invocation_id: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug)]
 struct FirehoseRecord {
     #[serde(rename = "recordId")]
     record_id: String,

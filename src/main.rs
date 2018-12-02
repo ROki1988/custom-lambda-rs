@@ -30,7 +30,7 @@ lazy_static! {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    simple_logger::init_with_level(log::Level::Debug).unwrap();
+    simple_logger::init_with_level(log::Level::Error).unwrap();
     lambda!(my_handler);
 
     Ok(())
